@@ -28,7 +28,7 @@ The project includes a **Streamlit web application**, **FastAPI REST API**, and 
 # Demo
 
 <p align="center">
-  <img src="Demo/Demo_clip.gif"  alt="Project Demo">
+  <img src="Demo/demo_clip.gif"  alt="Project Demo">
 </p>
 
 ---
