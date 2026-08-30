@@ -1,17 +1,52 @@
+import io
 import os
 import shutil
+from pathlib import Path
 from typing import Optional
 
 import kagglehub
 import torch
 import torch.nn as nn
-import torchvision.transforms.functional as TF
 from PIL import Image
-from torchvision import transforms
+
+from src.transforms import SegmentationTransforms, ClassificationTransform
+
+
+def _resolve_device(device: str | None) -> str:
+    """
+    Normalize a requested device string, falling back to CPU with a
+    warning (instead of raising) when CUDA was requested/expected but
+    isn't available. This keeps the app usable on machines without a
+    GPU (e.g. a demo laptop or a free-tier deployment).
+    """
+    if device is None or device == "auto":
+        return "cuda" if torch.cuda.is_available() else "cpu"
+
+    if device == "cuda" and not torch.cuda.is_available():
+        raise RuntimeError("Warning: CUDA was requested but is not available.")
+
+    if device == "cpu":
+        raise RuntimeError(
+            "CUDA is not available.\n"
+            "This model is intended to run on an NVIDIA GPU.\n"
+            "Please run the code on a machine with CUDA support."
+        )
+
+
+def _to_pil_image(image_or_path: "str | Path | bytes | Image.Image") -> Image.Image:
+    """
+    Accepts a file path, raw bytes (e.g. from an uploaded file), or an
+    already-open PIL Image, and returns a PIL Image in all cases.
+    """
+    if isinstance(image_or_path, Image.Image):
+        return image_or_path
+    if isinstance(image_or_path, (bytes, bytearray)):
+        return Image.open(io.BytesIO(image_or_path))
+    return Image.open(image_or_path)
 
 
 def load_model(model_class: type,
-               weights_path: str,
+               weights_path: str | Path,
                model_kwargs: dict | None = None,
                device: str | None = None) -> nn.Module:
     """
@@ -32,22 +67,29 @@ def load_model(model_class: type,
         target device, and set to evaluation mode (ready for prediction).
     """
     model_kwargs = model_kwargs or {}
-    if device is None:
-        device = "cuda" if torch.cuda.is_available() else "cpu"
+    device = _resolve_device(device)
 
-    if device == "cpu":
-        raise RuntimeError(
-            "No GPU available (or 'cpu' was explicitly requested), but this "
-            "model requires a GPU device. Make sure CUDA is available and "
-            "torch.cuda.is_available() returns True."
+    weights_path = Path(weights_path)
+    if not weights_path.exists():
+        raise FileNotFoundError(
+            f"Model weights not found at '{weights_path}'. Place the trained "
+            f"checkpoint there (see README.md) before running inference."
         )
-    try:
 
+    try:
         # Instantiate the architecture
         model = model_class(**model_kwargs)
 
-        # Load the trained weights
-        state_dict = torch.load(weights_path, map_location=device)
+        # Load the trained weights (weights_only=True is the safe default
+        # from PyTorch 2.6+; state dicts of plain tensors satisfy it).
+        state_dict = torch.load(weights_path, map_location=device, weights_only=True)
+
+        # Some checkpoints were saved from a DataParallel-wrapped model and
+        # carry a "module." prefix on every key — strip it if present so
+        # load_state_dict works regardless of how the model was trained.
+        if any(key.startswith("module.") for key in state_dict):
+            state_dict = {key.replace("module.", "", 1): value for key, value in state_dict.items()}
+
         model.load_state_dict(state_dict)
 
         # Move to device and switch to inference mode
@@ -56,8 +98,10 @@ def load_model(model_class: type,
 
         print(f"Model loaded from '{weights_path}' and ready for inference on '{device}'.")
         return model
-    except Exception as E:
-        raise RuntimeError("Error loading model")
+    except FileNotFoundError:
+        raise
+    except Exception as e:
+        raise RuntimeError(f"Error loading model from '{weights_path}': {e}") from e
 
 
 def download_data(dataset: Optional[str],
@@ -96,70 +140,55 @@ def download_data(dataset: Optional[str],
         raise
 
 
-def predict_mask(model: nn.Module,
-                 image_or_path: str | bytes,
-                 device: str | None = None,
-                 image_size: tuple[int, int] = (512, 512),
-                 ) -> dict:
+def predict_mask(
+        model: nn.Module,
+        image_or_path: str | bytes,
+        device: str | None = None,
+        image_size: tuple[int, int] = (512, 512),
+) -> dict:
     """
-    Run segmentation inference on a single MRI image using a loaded model.
-    Mirrors the exact preprocessing used in BrainMRISegDataset (test-time,
-    no augmentation): grayscale -> bilinear resize -> to_tensor -> normalize.
+    Run binary segmentation inference on a single MRI image.
 
-    Args:
-        model: A model already loaded and set to eval() (see load_model).
-        image_or_path: Path to the image file to segment.
-        device: "cuda" or "cpu". If None, auto-detects (falls back to
-            requiring GPU, same as predict_image).
-        image_size: Target (H, W) size — must match training size (512x512).
+    Model output is expected to have shape:
+        (B, 1, H, W)
 
-    Returns:
-        A dict with:
-            - "predicted_mask": tensor (H, W), long, 0=background 1=tumor
-            - "probabilities": tensor (H, W) of softmax probability for the
-                tumor class (class index 1)
-            - "tumor_coverage": percentage of pixels predicted as tumor (0-100)
-            - "confidence": mean tumor-class probability within the predicted
-                tumor region (0-100), or 0.0 if no tumor pixels were predicted
-            - "original_size": (width, height) of the input image, for
-                resizing the mask back for overlay on the original image
+    The single output channel represents the tumor probability.
     """
-    if device is None:
-        device = "cuda" if torch.cuda.is_available() else "cpu"
 
-    if device == "cpu":
-        raise RuntimeError(
-            "No GPU available (or 'cpu' was explicitly requested), but this "
-            "model requires a GPU device. Make sure CUDA is available and "
-            "torch.cuda.is_available() returns True."
-        )
+    device = _resolve_device(device)
 
-    with Image.open(image_or_path) as img:
-        image = img.copy()
+    image = _to_pil_image(image_or_path)
+    original_size = image.size  # (width, height)
 
-    original_size = image.size  # (width, height), before any resizing
+    transform = SegmentationTransforms(image_size)
 
-    # --- Match BrainMRISegDataset._joint_transform exactly (no augment) ---
-    image = image.convert("L")  # single-channel, same as training
-    image = TF.resize(image, image_size, interpolation=TF.InterpolationMode.BILINEAR)
-
-    input_tensor = TF.to_tensor(image)  # [1, H, W], values in [0, 1]
-    input_tensor = TF.normalize(input_tensor, mean=[0.5], std=[0.5])
-    input_tensor = input_tensor.unsqueeze(0).to(device)  # add batch dim -> [1, 1, H, W]
+    input_tensor = transform(image)
+    input_tensor = input_tensor.unsqueeze(0).to(device)
 
     with torch.no_grad():
-        output = model(input_tensor)  # expected shape: (1, 2, H, W)
-        probabilities = torch.softmax(output, dim=1).squeeze(0)  # -> (2, H, W)
-        predicted_mask = probabilities.argmax(dim=0)  # -> (H, W), long
+        output = model(input_tensor)
 
-        tumor_probabilities = probabilities[1]  # prob of tumor class -> (H, W)
+        # Binary segmentation:
+        # output shape -> (1, 1, H, W)
+        tumor_probabilities = torch.sigmoid(output).squeeze(0).squeeze(0)
+
+        # Convert probability map to binary mask
+        predicted_mask = (tumor_probabilities >= 0.5).long()
 
     tumor_pixels = (predicted_mask == 1).sum().item()
     total_pixels = predicted_mask.numel()
+
     tumor_coverage = (tumor_pixels / total_pixels) * 100
 
     if tumor_pixels > 0:
-        confidence = float(tumor_probabilities[predicted_mask == 1].mean().item()) * 100
+        confidence = (
+                float(
+                    tumor_probabilities[predicted_mask == 1]
+                        .mean()
+                        .item()
+                )
+                * 100
+        )
     else:
         confidence = 0.0
 
@@ -205,22 +234,20 @@ def predict_tumor_class(model: nn.Module,
                 (best-effort check based on class_names; None if it can't
                 be determined)
     """
-    transform = transforms.Compose([
-        transforms.Resize(resize),
-        transforms.ToTensor()
-    ])
+    device = _resolve_device(device)
 
-    if device is None:
-        device = "cuda" if torch.cuda.is_available() else "cpu"
+    # Reuse the exact same preprocessing used at training time (see
+    # transforms.py) instead of a separate ad-hoc pipeline, so inference
+    # always matches training. grayscale=True matches ClassificationModel's
+    # default in_channels=1 (brain MRI scans are single-channel, same
+    # convention as the segmentation model).
+    transform = ClassificationTransform(
+        image_size=resize,
+        grayscale=True,
+        augment=False,
+    )
 
-    if device == "cpu":
-        raise RuntimeError(
-            "No GPU available (or 'cpu' was explicitly requested), but this "
-            "model requires a GPU device. Make sure CUDA is available and "
-            "torch.cuda.is_available() returns True."
-        )
-
-    image = Image.open(image_or_path).convert("RGB")
+    image = _to_pil_image(image_or_path)
     input_tensor = transform(image).unsqueeze(0).to(device)  # add batch dim
 
     with torch.no_grad():

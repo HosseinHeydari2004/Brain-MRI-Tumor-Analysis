@@ -1,4 +1,30 @@
-.idea
-*.pt
+# --- Python ---
 __pycache__/
-*.zip
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+env/
+
+# --- Model weights & data (large binaries, don't belong in git) ---
+models/*.pth
+models/*.pt
+data/
+
+# --- Notebooks / editors ---
+.ipynb_checkpoints/
+.vscode/
+.idea/
+
+# --- Streamlit / logs ---
+.streamlit/secrets.toml
+*.log
+
+# --- OS ---
+.DS_Store
+Thumbs.db
+
+*.ipynb

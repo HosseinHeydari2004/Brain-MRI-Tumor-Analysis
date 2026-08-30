@@ -1,25 +1,26 @@
+from __future__ import annotations
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
 from torchvision.models import (
     resnet34,
     ResNet34_Weights
 )
 
+
 # ===================================
 # SEGMENTATION MODEL
 # ===================================
 
-class ResNet34UNet3Plus(nn.Module):
+class SegmentationModel(nn.Module):
 
     def __init__(
-        self,
-        in_channels=1,
-        out_channels=1,
-        decoder_channels=64
+            self,
+            in_channels=1,
+            out_channels=1,
+            decoder_channels=64
     ):
-
         super().__init__()
 
         self.encoder = ResNet34Encoder(
@@ -112,7 +113,6 @@ class ResNet34UNet3Plus(nn.Module):
         )
 
     def forward(self, x):
-
         e1, e2, e3, e4, e5 = self.encoder(x)
 
         d4 = self.dec4(
@@ -180,7 +180,6 @@ class ResNet34UNet3Plus(nn.Module):
 class ResNet34Encoder(nn.Module):
 
     def __init__(self, in_channels=1):
-
         super().__init__()
 
         backbone = resnet34(
@@ -199,7 +198,6 @@ class ResNet34Encoder(nn.Module):
         )
 
         with torch.no_grad():
-
             new_conv.weight.copy_(
                 original_conv.weight.mean(
                     dim=1,
@@ -220,7 +218,6 @@ class ResNet34Encoder(nn.Module):
         self.layer4 = backbone.layer4
 
     def forward(self, x):
-
         x = self.conv1(x)
         x = self.bn1(x)
         x = self.relu(x)
@@ -250,9 +247,9 @@ class ResNet34Encoder(nn.Module):
 class UNet3PlusDecoderBlock(nn.Module):
 
     def __init__(
-        self,
-        skip_channels,
-        out_channels=64
+            self,
+            skip_channels,
+            out_channels=64
     ):
 
         super().__init__()
@@ -262,7 +259,6 @@ class UNet3PlusDecoderBlock(nn.Module):
         self.projections = nn.ModuleList()
 
         for channels in skip_channels:
-
             self.projections.append(
                 nn.Sequential(
 
@@ -320,18 +316,17 @@ class UNet3PlusDecoderBlock(nn.Module):
         )
 
     def forward(
-        self,
-        features,
-        target_size
+            self,
+            features,
+            target_size
     ):
 
         fused_features = []
 
         for feature, projection in zip(
-            features,
-            self.projections
+                features,
+                self.projections
         ):
-
             feature = F.interpolate(
                 feature,
                 size=target_size,
@@ -356,18 +351,18 @@ class UNet3PlusDecoderBlock(nn.Module):
 
         return x
 
+
 # ====================================
 # CLASSIFICATION MODEL
 # ====================================
 
-class ResNet34Classifier(nn.Module):
+class ClassificationModel(nn.Module):
 
     def __init__(
-        self,
-        num_classes,
-        in_channels=1
+            self,
+            num_classes,
+            in_channels=1
     ):
-
         super().__init__()
 
         backbone = resnet34(
@@ -386,7 +381,6 @@ class ResNet34Classifier(nn.Module):
         )
 
         with torch.no_grad():
-
             new_conv.weight.copy_(
                 original_conv.weight.mean(
                     dim=1,
@@ -408,5 +402,4 @@ class ResNet34Classifier(nn.Module):
         self.backbone = backbone
 
     def forward(self, x):
-
         return self.backbone(x)

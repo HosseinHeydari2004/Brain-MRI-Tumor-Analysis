@@ -1,0 +1,127 @@
+# ==============================
+# Git
+# ==============================
+.git
+.gitignore
+.gitattributes
+
+# ==============================
+# Python
+# ==============================
+__pycache__/
+*.py[cod]
+*$py.class
+
+*.so
+
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+
+pip-wheel-metadata/
+share/python-wheels/
+
+*.egg-info/
+.installed.cfg
+MANIFEST
+
+# ==============================
+# Virtual environments
+# ==============================
+.venv/
+venv/
+env/
+ENV/
+.env
+.env.*
+
+# ==============================
+# Jupyter
+# ==============================
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# ==============================
+# IDE
+# ==============================
+.vscode/
+.idea/
+
+# ==============================
+# OS
+# ==============================
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ==============================
+# Data
+# ==============================
+data/
+datasets/
+*.csv
+*.zip
+*.tar
+*.tar.gz
+
+# ==============================
+# Logs
+# ==============================
+*.log
+logs/
+
+# ==============================
+# Cache
+# ==============================
+.cache/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ==============================
+# Streamlit
+# ==============================
+.streamlit/secrets.toml
+
+# ==============================
+# Temporary files
+# ==============================
+*.tmp
+*.temp
+tmp/
+temp/
+
+# ==============================
+# Model checkpoints
+# ==============================
+*.pt
+*.pth
+*.ckpt
+
+# ==============================
+# Testing / coverage
+# ==============================
+.coverage
+htmlcov/
+.tox/
+
+# ==============================
+# Documentation / development
+# ==============================
+docs/_build/
+
+# ==============================
+# Docker
+# ==============================
+Dockerfile*
+docker-compose*.yml
+.dockerignore

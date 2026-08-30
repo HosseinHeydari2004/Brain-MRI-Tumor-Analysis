@@ -1,0 +1,24 @@
+services:
+  api:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    command: uvicorn app.api.main:app --host 0.0.0.0 --port 8000
+    ports:
+      - "8000:8000"
+    volumes:
+      - ../models:/workspace/models:ro
+    restart: unless-stopped
+
+  streamlit:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    command: streamlit run app/streamlit_app/app.py --server.port=8501 --server.address=0.0.0.0
+    ports:
+      - "8501:8501"
+    volumes:
+      - ../models:/workspace/models:ro
+    depends_on:
+      - api
+    restart: unless-stopped
