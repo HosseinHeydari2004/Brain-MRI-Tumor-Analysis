@@ -708,25 +708,8 @@ This allows the project to run across different environments without requiring m
 
 ---
 
-## 15. Future Improvements
 
-Potential future improvements include:
-
-- [ ] Improve segmentation performance with additional augmentation
-- [ ] Experiment with Dice + BCE / Focal-based losses
-- [ ] Add Dice, IoU and HD95 evaluation dashboards
-- [ ] Add model explainability methods such as Grad-CAM
-- [ ] Add DICOM support
-- [ ] Add batch inference
-- [ ] Add experiment tracking
-- [ ] Add automated model versioning
-- [ ] Add CI/CD pipeline
-- [ ] Add production-grade authentication and API rate limiting
-- [ ] Deploy the application to a cloud GPU environment
-
----
-
-## 16. Authors & Contributors
+## 15. Authors & Contributors
 
 ### Author
 
@@ -743,7 +726,7 @@ GitHub: [@Seyede-Reyhane-Khorashadizade](https://github.com/Seyede-Reyhane-Khora
 
 ---
 
-## 17. Disclaimer
+## 16. Disclaimer
 
 This project is intended exclusively for **research, education, and portfolio demonstration**.
 
